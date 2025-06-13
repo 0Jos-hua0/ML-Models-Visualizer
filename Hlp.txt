@@ -1,0 +1,755 @@
+for bypass allow scripts:
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+ def visualize_decision_tree(model):
+    """Generate a Decision Tree visualization and return as a Plotly Figure with base64 image."""
+    fig_mat, ax = plt.subplots(figsize=(12, 8))
+    plot_tree(model, filled=True, feature_names=getattr(model, "feature_names_in_", None), ax=ax)
+    plt.title("Decision Tree Visualization")
+
+    buf = io.BytesIO()
+    plt.savefig(buf, format="png", bbox_inches='tight')
+    plt.close(fig_mat)
+    buf.seek(0)
+    encoded_image = base64.b64encode(buf.read()).decode('utf-8')
+
+    fig_plotly = go.Figure()
+    fig_plotly.add_layout_image(
+        dict(
+            source=f"data:image/png;base64,{encoded_image}",
+            x=0, y=1,
+            xref="paper", yref="paper",
+            sizex=1, sizey=1,
+            xanchor="left", yanchor="top",
+            layer="below"
+        )
+    )
+    fig_plotly.update_layout(title="Decision Tree Model")
+    return fig_plotly
+                                                                    
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+import joblib
+import numpy as np
+import io
+import base64
+import plotly.express as px
+
+import matplotlib.pyplot as plt
+import plotly.graph_objects as go
+from sklearn.linear_model import LinearRegression, LogisticRegression
+from sklearn.tree import DecisionTreeClassifier, plot_tree
+from sklearn.neighbors import KNeighborsClassifier
+
+import json
+
+def load_model(file_path):
+    try:
+        model = joblib.load(file_path)
+        error_message, fig_or_base64 = detect_errors_and_visualize(model)
+
+        if error_message:
+            return error_message, None
+
+        # If it's a plotly Figure, convert it to JSON
+        if isinstance(fig_or_base64, go.Figure):
+            fig_json = fig_or_base64.to_json()
+            return None, {'plotly_json': fig_json}
+
+        # If it's a base64 image (e.g., decision tree), return that
+        return None, {'image': fig_or_base64}
+
+    except Exception as e:
+        return str(e), None
+
+def detect_errors_and_visualize(model):
+    try:
+        if isinstance(model, DecisionTreeClassifier):
+            return None, visualize_decision_tree(model)
+        elif isinstance(model, KNeighborsClassifier):
+            return None, visualize_knn(model)
+        elif isinstance(model, LinearRegression):
+            return None, visualize_linear_regression(model)
+        elif isinstance(model, LogisticRegression):
+            return None, visualize_logistic_regression(model)
+        else:
+            error_message = "Unsupported model type! This tool supports Decision Trees, KNN, Linear & Logistic Regression."
+            return error_message, None
+    except Exception as e:
+        return f"Error in model visualization: {e}", None
+
+def visualize_decision_tree(model, feature_names):
+    from sklearn.tree import plot_tree
+    import matplotlib.pyplot as plt
+    import io
+    import plotly.tools as tls
+
+    fig, ax = plt.subplots(figsize=(20, 10))
+    plot_tree(model, feature_names=feature_names, class_names=True, filled=True, rounded=True, ax=ax)
+    buf = io.BytesIO()
+    plt.savefig(buf, format='png')
+    buf.seek(0)
+    fig_plotly = tls.mpl_to_plotly(fig)
+    plt.close(fig)
+    return fig_plotly
+
+
+def visualize_knn(model):
+    """Visualize KNN class distribution."""
+    unique_classes, counts = np.unique(model.classes_, return_counts=True)
+    fig = go.Figure([go.Bar(x=unique_classes, y=counts)])
+    fig.update_layout(
+        title="KNN Class Distribution",
+        xaxis_title="Class Labels",
+        yaxis_title="Count"
+    )
+    return fig
+
+def visualize_linear_regression(model):
+    """Visualize Linear Regression coefficients or prediction surface."""
+    fig = go.Figure()
+    if model.coef_.shape[0] == 2:
+        x_range = np.linspace(800, 3000, 10)
+        y_range = np.linspace(1, 5, 10)
+        x_grid, y_grid = np.meshgrid(x_range, y_range)
+        price_grid = model.predict(np.c_[x_grid.ravel(), y_grid.ravel()]).reshape(x_grid.shape)
+
+        fig.add_trace(go.Surface(z=price_grid, x=x_grid, y=y_grid))
+        fig.update_layout(title="Linear Regression Model: Price Prediction", scene=dict(zaxis_title="Price"))
+    else:
+        coefficients = model.coef_.flatten() if model.coef_.ndim > 1 else model.coef_
+        fig.add_trace(go.Bar(x=list(range(len(coefficients))), y=coefficients))
+        fig.update_layout(title="Linear Regression Coefficients", xaxis_title="Features", yaxis_title="Coefficient Value")
+    return fig
+
+def visualize_logistic_regression(model):
+    """Visualize Logistic Regression coefficients."""
+    coefficients = model.coef_.flatten() if model.coef_.ndim > 1 else model.coef_
+    fig = go.Figure([go.Bar(x=list(range(len(coefficients))), y=coefficients)])
+    fig.update_layout(title="Logistic Regression Feature Importance", xaxis_title="Features", yaxis_title="Coefficient Value")
+    return fig
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+from flask import Flask, request, jsonify
+import stellarbasin  # your ML visual logic
+from flask_cors import CORS
+import os
+
+app = Flask(__name__)
+CORS(app)
+@app.route('/ping', methods=['GET'])
+def ping():
+    return jsonify({'message': 'pong'}), 200
+
+@app.route('/upload', methods=['POST'])
+def upload_model():
+    if 'model' not in request.files:
+        return jsonify({'error': 'No model file part'}), 400
+    file = request.files['model']
+
+
+    
+    filename = file.filename
+    os.makedirs("uploads", exist_ok=True)
+    file_path = os.path.join("uploads", filename)
+    file.save(file_path)
+
+    error_message, visualization_data = stellarbasin.load_model(file_path)
+
+    if error_message:
+        return jsonify({'error': error_message}), 400
+    print("Returning:", {'message': 'Model loaded successfully!', 'visualization': visualization_data})  # ADD THIS
+    return jsonify({
+    'message': 'Model loaded successfully!',
+    'visualization': visualization_data
+})
+
+
+
+
+if __name__ == '__main__':
+    app.run(debug=True)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+import React from "react";
+import ModelUploader from "./components/ModelUploader";
+
+function App() {
+  return (
+    <div style={{ textAlign: "center", padding: "2rem" }}>
+      <h1>STELLARBASIN - ML Model Visualizer</h1>
+      <ModelUploader />
+    </div>
+  );
+}
+
+export default App;
+
+
+
+
+
+
+
+
+
+QQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQ
+
+import React, { useState, useRef } from "react";
+import Plot from "react-plotly.js";
+
+function ModelUploader({ setReportText }) {
+  const fileInputRef = useRef(null);
+  const [plotData, setPlotData] = useState(null);
+
+  const handleUpload = async () => {
+    const file = fileInputRef.current.files[0];
+    if (!file) return;
+
+    const formData = new FormData();
+    formData.append("model", file);
+
+    const res = await fetch("http://localhost:5000/upload", {
+      method: "POST",
+      body: formData,
+    });
+
+    const json = await res.json();
+    console.log("💾 Got JSON:", json);
+
+    if (json.report) {
+      setReportText(JSON.stringify(json.report, null, 2));
+    }
+
+    if (json.image) {
+      if (json.image.data && json.image.layout) {
+        // 📊 Plotly format
+        setPlotData({
+          type: "plotly",
+          data: json.image.data,
+          layout: json.image.layout,
+        });
+      } else if (typeof json.image === "string") {
+        // 🖼️ Base64 Matplotlib image format
+        setPlotData({
+          type: "matplotlib",
+          src: json.image,
+        });
+      }
+    } else {
+      setPlotData(null); // Clear previous visual if no new one
+    }
+  };
+
+  return (
+    <div style={{ marginTop: "2rem" }}>
+      <input type="file" ref={fileInputRef} />
+      <button
+        onClick={handleUpload}
+        style={{
+          marginLeft: "1rem",
+          padding: "0.5rem 1rem",
+          backgroundColor: "#007bff",
+          color: "white",
+          border: "none",
+          borderRadius: "5px",
+        }}
+      >
+        Upload Model
+      </button>
+
+      {plotData && (
+        <div style={{ marginTop: "2rem" }}>
+          <h2>Model Visualization</h2>
+          {plotData.type === "plotly" ? (
+            <Plot
+              data={plotData.data}
+              layout={plotData.layout}
+              style={{ width: "100%" }}
+            />
+          ) : (
+            <img
+              src={plotData.src}
+              alt="Model Visualization"
+              style={{ maxWidth: "100%" }}
+            />
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export default ModelUploader;
+
+QQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQ\\\\\\\\\
+
+
+
+
+
+
+
+
+
+
+import React, { useState, useRef } from "react";
+import Plot from "react-plotly.js";
+
+function ModelUploader({ setReportText }) {
+  const fileInputRef = useRef(null);
+  const [plotData, setPlotData] = useState(null);
+
+  const handleUpload = async () => {
+    const file = fileInputRef.current.files[0];
+    if (!file) return;
+
+    const formData = new FormData();
+    formData.append("model", file);
+
+    const res = await fetch("http://localhost:5000/upload", {
+      method: "POST",
+      body: formData,
+    });
+
+    const json = await res.json();
+    console.log("💾 Got JSON:", json);
+
+    if (json.report) {
+      setReportText(JSON.stringify(json.report, null, 2));
+    }
+
+    if (json.image) {
+      if (json.image.data && json.image.layout) {
+        // 📊 Plotly format
+        setPlotData({
+          type: "plotly",
+          data: json.image.data,
+          layout: json.image.layout,
+        });
+      } else if (typeof json.image === "string") {
+        // 🖼️ Base64 Matplotlib image format
+        setPlotData({
+          type: "matplotlib",
+          src: json.image,
+        });
+      }
+    } else {
+      setPlotData(null); // Clear previous visual if no new one
+    }
+  };
+
+  return (
+    <div style={{ marginTop: "2rem" }}>
+      <input type="file" ref={fileInputRef} />
+      <button
+        onClick={handleUpload}
+        style={{
+          marginLeft: "1rem",
+          padding: "0.5rem 1rem",
+          backgroundColor: "#007bff",
+          color: "white",
+          border: "none",
+          borderRadius: "5px",
+        }}
+      >
+        Upload Model
+      </button>
+
+      {plotData && (
+        <div style={{ marginTop: "2rem" }}>
+          <h2>Model Visualization</h2>
+          {plotData.type === "plotly" ? (
+            <Plot
+              data={plotData.data}
+              layout={plotData.layout}
+              style={{ width: "100%" }}
+            />
+          ) : (
+            <img
+              src={plotData.src}
+              alt="Model Visualization"
+              style={{ maxWidth: "100%" }}
+            />
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export default ModelUploader;
+
+
+
+
+
+
+
+
+
+
+import React, { useState } from "react";
+import Plot from "react-plotly.js";
+
+function ModelUploader() {
+  const [plotData, setPlotData] = useState(null);
+  const [imageData, setImageData] = useState(null);
+  const [reportText, setReportText] = useState("");
+  const [file, setFile] = useState(null);
+  const [message, setMessage] = useState("");
+
+  const handleFileChange = (e) => {
+    setFile(e.target.files[0]);
+  };
+
+  const handleUpload = async () => {
+    if (!file) return;
+
+    const formData = new FormData();
+    formData.append("model", file);
+
+    try {
+      const response = await axios.post("http://localhost:5000/upload", formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+
+      console.log("Upload response:", response.data);
+
+      const { message, report, plotly, image } = response.data;
+      setMessage(message || "");
+
+      if (plotly) {
+        setPlotData(plotly);
+        setImageData(null);
+      } else if (image) {
+        setImageData(image);
+        setPlotData(null);
+      } else {
+        setPlotData(null);
+        setImageData(null);
+      }
+
+      if (report) {
+        const formattedReport = JSON.stringify(report, null, 2);
+        setReportText(formattedReport);
+      } else {
+        setReportText("No report available.");
+      }
+
+    } catch (error) {
+      console.error("Upload failed:", error.response ? error.response.data : error.message);
+      setMessage("Failed to upload model.");
+      setPlotData(null);
+      setImageData(null);
+      setReportText("");
+    }
+  };
+
+  return (
+    <div>
+      <h2>Upload Trained Model</h2>
+      <input type="file" onChange={handleFileChange} />
+      <button onClick={handleUpload}>Upload Model</button>
+      <p>{message}</p>
+
+      {plotData && (
+        <Plot
+          data={plotData.data}
+          layout={plotData.layout}
+          config={{ responsive: true }}
+          style={{ width: "100%", height: "100%", marginTop: "2rem" }}
+        />
+      )}
+
+      {imageData && (
+        <div style={{ marginTop: "2rem" }}>
+          <img
+            src={data:image/png;base64,${imageData}}
+            alt="Model Visualization"
+            style={{ maxWidth: "100%", height: "auto", border: "1px solid #ccc" }}
+          />
+        </div>
+      )}
+
+      {reportText && (
+        <div style={{ marginTop: "2rem", whiteSpace: "pre-wrap", fontFamily: "monospace" }}>
+          <h3>Model Report</h3>
+          <pre>{reportText}</pre>
+        </div>
+      )}
+    </div>
+  );
+}
+
+export default ModelUploader;    
+
+
+
+
+
+
+
+
+import React, { useState, useRef } from "react";
+import Plot from "react-plotly.js";
+import axios from "axios";
+
+function ModelUploader() {
+  const fileInputRef = useRef(null);
+  const [plotData, setPlotData] = useState(null);
+  const [imageData, setImageData] = useState(null);
+  const [reportText, setReportText] = useState("");
+  const [message, setMessage] = useState("");
+
+  const handleUpload = async () => {
+    const file = fileInputRef.current.files[0];
+    if (!file) return;
+
+    const formData = new FormData();
+    formData.append("model", file);
+
+    try {
+      const response = await axios.post("http://localhost:5000/upload", formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+
+      const { message, report, plotly, image } = response.data;
+      console.log("✅ Got response:", response.data);
+      setMessage(message || "");
+
+      // Handle report
+      if (response.data.report) {
+        const formattedReport = JSON.stringify(response.data.report, null, 2);
+        setReportText(formattedReport);
+        console.log("🧾 Set report:", formattedReport);
+      } else {
+        console.log("⚠️ No report found");
+        setReportText("No report available.");
+      }
+
+      // Clear visuals first
+      setPlotData(null);
+      setImageData(null);
+
+      // Priority 1: Plotly key (used by KNN, Linear, Logistic)
+      if (plotly && plotly.data && plotly.layout) {
+        setPlotData(plotly);
+      }
+
+      // Priority 2: Image key
+      else if (image) {
+        // If image is Plotly structure
+        if (image.data && image.layout) {
+          setPlotData(image);
+        }
+        // If image is base64 string
+        else if (typeof image === "string") {
+          setImageData(image);
+        }
+      }
+
+    } catch (err) {
+      console.error("❌ Upload failed:", err.response ? err.response.data : err.message);
+      setMessage("Upload failed.");
+      setPlotData(null);
+      setImageData(null);
+      setReportText("");
+    }
+  };
+
+  return (
+    <div style={{ padding: "1rem" }}>
+      <h2>Upload Trained Model</h2>
+      <input type="file" ref={fileInputRef} />
+      <button
+        onClick={handleUpload}
+        style={{
+          marginLeft: "1rem",
+          padding: "0.5rem 1rem",
+          backgroundColor: "#007bff",
+          color: "white",
+          border: "none",
+          borderRadius: "5px",
+          cursor: "pointer",
+        }}
+      >
+        Upload Model
+      </button>
+
+      <p>{message}</p>
+
+      {plotData && (
+        <div style={{ marginTop: "2rem" }}>
+          <h3>Model Visualization (Plotly)</h3>
+          <Plot
+            data={plotData.data}
+            layout={plotData.layout}
+            config={{ responsive: true }}
+            style={{ width: "100%", height: "100%" }}
+          />
+        </div>
+      )}
+
+      {imageData && (
+        <div style={{ marginTop: "2rem" }}>
+          <h3>Model Visualization (Matplotlib)</h3>
+          <img
+            src={`data:image/png;base64,${imageData}`}
+            alt="Model Visualization"
+            style={{ maxWidth: "100%", border: "1px solid #ccc" }}
+          />
+        </div>
+      )}
+
+      {reportText && (
+        <div style={{ marginTop: "2rem", whiteSpace: "pre-wrap", fontFamily: "monospace" }}>
+          <h3>Model Report</h3>
+          <pre>{reportText}</pre>
+        </div>
+      )}
+    </div>
+  );
+}
+
+export default ModelUploader;
+
+
+
+
+
+
+
+
+
+
+
+
+import React, { useState, useRef } from "react";
+import Plot from "react-plotly.js";
+import axios from "axios";
+
+function ModelUploader({ setReportText }) {
+  const fileInputRef = useRef(null);
+  const [plotData, setPlotData] = useState(null);
+  
+
+  const handleUpload = async () => {
+    const file = fileInputRef.current.files[0];
+    if (!file) return;
+
+    const formData = new FormData();
+    formData.append("model", file);
+
+    const res = await fetch("http://localhost:5000/upload", {
+      method: "POST",
+      body: formData,
+    });
+
+    const json = await res.json();
+    console.log("💾 Got JSON:", json);
+
+    if (json.report) {
+      setReportText(JSON.stringify(json.report, null, 2));
+    }
+
+    if (json.image) {
+      if (json.image.data && json.image.layout) {
+        // 📊 Plotly format
+        setPlotData({
+          type: "plotly",
+          data: json.image.data,
+          layout: json.image.layout,
+        });
+      } else if (typeof json.image === "string") {
+        // 🖼️ Base64 Matplotlib image format
+        setPlotData({
+          type: "matplotlib",
+          src: json.image,
+        });
+      }
+    } else {
+      setPlotData(null); // Clear previous visual if no new one
+    }
+  };
+
+  return (
+    <div style={{ marginTop: "2rem" }}>
+      <input type="file" ref={fileInputRef} />
+      <button
+        onClick={handleUpload}
+        style={{
+          marginLeft: "1rem",
+          padding: "0.5rem 1rem",
+          backgroundColor: "#007bff",
+          color: "white",
+          border: "none",
+          borderRadius: "5px",
+        }}
+      >
+        Upload Model
+      </button>
+
+      {plotData && (
+        <div style={{ marginTop: "2rem" }}>
+          <h2>Model Visualization</h2>
+          {plotData.type === "plotly" ? (
+            <Plot
+              data={plotData.data}
+              layout={plotData.layout}
+              style={{ width: "100%" }}
+            />
+          ) : (
+            <img
+              src={plotData.src}
+              alt="Model Visualization"
+              style={{ maxWidth: "100%" }}
+            />
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export default ModelUploader;
+
