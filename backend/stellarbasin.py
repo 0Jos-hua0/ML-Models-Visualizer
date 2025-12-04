@@ -3,12 +3,14 @@ import numpy as np
 import io
 import base64
 import plotly.express as px
+import warnings
 import matplotlib.pyplot as plt
 import plotly.graph_objects as go
 from sklearn.linear_model import LinearRegression, LogisticRegression
 from sklearn.tree import DecisionTreeClassifier, plot_tree
 from sklearn.neighbors import KNeighborsClassifier
 import json
+from sklearn.exceptions import InconsistentVersionWarning
 import matplotlib
 import pandas as pd
 from sklearn.metrics import classification_report
@@ -22,7 +24,11 @@ def load_model_object(file_path):
 
 def load_model(file_path):
     try:
-        model = joblib.load(file_path)
+        # Suppress the warning about scikit-learn version mismatch
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=InconsistentVersionWarning)
+            model = joblib.load(file_path)
+
         error_message, fig_or_base64, report = detect_errors_and_visualize(model)
 
         if error_message:
@@ -235,28 +241,3 @@ def generate_report(model, model_type, X=None, y=None):
         report["note"] = f"Some report data could not be extracted: {e}"
 
     return report
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
