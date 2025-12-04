@@ -2,17 +2,23 @@ import React, { useState, useRef } from "react";
 import Plot from "react-plotly.js";
 import axios from "axios";
 
-function ModelUploader() {
+function ModelUploader({ setExplanation }) {
   const fileInputRef = useRef(null);
   const [plotData, setPlotData] = useState(null);
   const [imageData, setImageData] = useState(null);
-  const [reportText, setReportText] = useState("");
-  const [reportSummary, setReportSummary] = useState(null); // 🆕 Summary State
   const [message, setMessage] = useState("");
+  const [modelType, setModelType] = useState("");
+  const [loading, setLoading] = useState(false);
 
   const handleUpload = async () => {
     const file = fileInputRef.current.files[0];
-    if (!file) return;
+    if (!file) {
+      setMessage("Please select a file first!");
+      return;
+    }
+
+    setLoading(true);
+    setMessage("Uploading and analyzing model...");
 
     const formData = new FormData();
     formData.append("model", file);
@@ -22,138 +28,143 @@ function ModelUploader() {
         headers: { "Content-Type": "multipart/form-data" },
       });
 
-      const { message, report, report_summary, plotly, image } = response.data;
+      const { message, model_type, explanation, plotly, image } = response.data;
       console.log("✅ Got response:", response.data);
-      setMessage(message || "");
 
-      // Handle full report
-      if (report) {
-        const formattedReport = JSON.stringify(report, null, 2);
-        setReportText(formattedReport);
-        console.log("🧾 Set report:", formattedReport);
+      setMessage(message || "Model loaded successfully!");
+      setModelType(model_type || "Unknown Model");
+
+      // Handle explanation
+      if (explanation) {
+        setExplanation(explanation);
       } else {
-        setReportText("No report available.");
+        setExplanation(null);
       }
 
-      // Handle report summary
-      if (report_summary) {
-        setReportSummary(report_summary);
-      } else {
-        setReportSummary(null);
-      }
-
-      // Clear visuals first
+      // Clear previous visuals
       setPlotData(null);
       setImageData(null);
 
-      // Handle visuals
+      // Handle visualizations
       if (plotly && plotly.data && plotly.layout) {
         setPlotData(plotly);
       } else if (image) {
-        if (image.data && image.layout) {
-          setPlotData(image);
-        } else if (typeof image === "string") {
-          setImageData(image);
-        }
+        setImageData(image);
       }
+
+      setLoading(false);
 
     } catch (err) {
       console.error("❌ Upload failed:", err.response ? err.response.data : err.message);
-      setMessage("Upload failed.");
+      const errorMsg = err.response?.data?.error || "Upload failed. Please try again.";
+      setMessage(errorMsg);
       setPlotData(null);
       setImageData(null);
-      setReportText("");
-      setReportSummary(null);
+      setExplanation(null);
+      setModelType("");
+      setLoading(false);
     }
   };
 
   return (
-    <div style={{ padding: "1rem" }}>
-      <h2>Upload Trained Model</h2>
-      <input type="file" ref={fileInputRef} />
-      <button
-        onClick={handleUpload}
-        style={{
-          marginLeft: "1rem",
-          padding: "0.5rem 1rem",
-          backgroundColor: "#007bff",
-          color: "white",
-          border: "none",
+    <div style={{ padding: "1.5rem" }}>
+      <h2 style={{ marginBottom: "1rem", color: "#333" }}>Upload Your Trained Model</h2>
+
+      <div style={{ marginBottom: "1rem" }}>
+        <input
+          type="file"
+          ref={fileInputRef}
+          accept=".pkl,.joblib,.pickle"
+          style={{ marginRight: "1rem" }}
+        />
+        <button
+          onClick={handleUpload}
+          disabled={loading}
+          style={{
+            padding: "0.6rem 1.5rem",
+            backgroundColor: loading ? "#6c757d" : "#007bff",
+            color: "white",
+            border: "none",
+            borderRadius: "5px",
+            cursor: loading ? "not-allowed" : "pointer",
+            fontSize: "1rem",
+            fontWeight: "500",
+            transition: "background-color 0.3s"
+          }}
+        >
+          {loading ? "Processing..." : "Upload & Analyze"}
+        </button>
+      </div>
+
+      {message && (
+        <p style={{
+          color: message.includes("success") || message.includes("loaded") ? "#28a745" : "#dc3545",
+          fontWeight: "500",
+          marginTop: "0.5rem"
+        }}>
+          {message}
+        </p>
+      )}
+
+      {modelType && (
+        <div style={{
+          backgroundColor: "#e7f3ff",
+          padding: "0.75rem 1rem",
           borderRadius: "5px",
-          cursor: "pointer",
-        }}
-      >
-        Upload Model
-      </button>
-
-      <p>{message}</p>
-
-      {/* Report Summary */}
-      {reportSummary && (
-        <div style={{ marginTop: "2rem" }}>
-          <h3>📊 Model Report Summary</h3>
-          <table style={{ borderCollapse: "collapse", width: "100%" }}>
-            <tbody>
-              {Object.entries(reportSummary).map(([key, value]) => (
-                <tr key={key}>
-                  <td style={{ padding: "8px", border: "1px solid #ccc", fontWeight: "bold" }}>{key}</td>
-                  <td style={{ padding: "8px", border: "1px solid #ccc" }}>
-  <pre style={{ margin: 0, whiteSpace: "pre-wrap" }}>{JSON.stringify(value)}</pre>
-</td>
-
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          marginTop: "1rem",
+          borderLeft: "4px solid #007bff"
+        }}>
+          <strong>Detected Model:</strong> {modelType}
         </div>
       )}
 
       {/* Plotly Visualization */}
       {plotData && (
         <div style={{ marginTop: "2rem" }}>
-          <h3>📈 Model Visualization (Plotly)</h3>
-          <Plot
-            data={plotData.data}
-            layout={plotData.layout}
-            config={{ responsive: true }}
-            style={{ width: "100%", height: "100%" }}
-          />
+          <h3 style={{ color: "#333", marginBottom: "1rem" }}>📊 Model Visualization</h3>
+          <div style={{
+            backgroundColor: "white",
+            padding: "1rem",
+            borderRadius: "8px",
+            boxShadow: "0 2px 8px rgba(0,0,0,0.1)"
+          }}>
+            <Plot
+              data={plotData.data}
+              layout={{
+                ...plotData.layout,
+                autosize: true,
+                margin: { l: 50, r: 50, t: 50, b: 50 }
+              }}
+              config={{ responsive: true, displayModeBar: true }}
+              style={{ width: "100%", height: "500px" }}
+            />
+          </div>
         </div>
       )}
 
       {/* Matplotlib Image */}
       {imageData && (
         <div style={{ marginTop: "2rem" }}>
-          <h3>🖼️ Model Visualization (Matplotlib)</h3>
-          <img
-            src={`data:image/png;base64,${imageData}`}
-            alt="Model Visualization"
-            style={{ maxWidth: "100%", border: "1px solid #ccc" }}
-          />
+          <h3 style={{ color: "#333", marginBottom: "1rem" }}>🌳 Model Visualization</h3>
+          <div style={{
+            backgroundColor: "white",
+            padding: "1rem",
+            borderRadius: "8px",
+            boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
+            textAlign: "center"
+          }}>
+            <img
+              src={`data:image/png;base64,${imageData}`}
+              alt="Model Visualization"
+              style={{
+                maxWidth: "100%",
+                height: "auto",
+                borderRadius: "4px"
+              }}
+            />
+          </div>
         </div>
       )}
-
-      {/* Full Report */}
-{reportText && (
-  <div style={{ marginTop: "2rem" }}>
-    <h3>📄 Full Model Report</h3>
-    <table style={{ borderCollapse: "collapse", width: "100%" }}>
-      <tbody>
-        {Object.entries(JSON.parse(reportText)).map(([key, value]) => (
-          <tr key={key}>
-            <td style={{ padding: "8px", border: "1px solid #ccc", fontWeight: "bold", verticalAlign: "top" }}>{key}</td>
-            <td style={{ padding: "8px", border: "1px solid #ccc" }}>
-              {typeof value === "object"
-                ? <pre style={{ margin: 0 }}>{JSON.stringify(value, null, 2)}</pre>
-                : String(value)}
-            </td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
-  </div>
-)}
-
     </div>
   );
 }
