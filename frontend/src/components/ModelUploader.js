@@ -96,6 +96,10 @@ function ModelUploader({ setExplanation }) {
         </button>
       </div>
 
+      <p style={{ fontSize: "0.85rem", color: "#6c757d", marginTop: "0.5rem" }}>
+        📁 Supported formats: <strong>.pkl</strong>, <strong>.joblib</strong>, <strong>.pickle</strong> (scikit-learn models)
+      </p>
+
       {message && (
         <p style={{
           color: message.includes("success") || message.includes("loaded") ? "#28a745" : "#dc3545",
