@@ -1,1 +1,22 @@
-node_modules
+# Dependencies
+node_modules/
+backend/venv/
+venv/
+.env
+
+# Build outputs
+frontend/build/
+dist/
+__pycache__/
+*.pyc
+
+# IDEs
+.vscode/
+.idea/
+
+# System
+.DS_Store
+
+# Temporary Files
+backend/uploads/*
+!backend/uploads/.gitkeep
