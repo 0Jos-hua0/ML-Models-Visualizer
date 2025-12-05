@@ -20,3 +20,6 @@ __pycache__/
 # Temporary Files
 backend/uploads/*
 !backend/uploads/.gitkeep
+
+# AI Agent Config
+.agent/
